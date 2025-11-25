@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RiskCalc - Calculadora de Lotes</title>
+    
+    <!-- Metadados do PWA (Manifest) -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="RiskCalc">
+    
+    <!-- Link Simulado do Manifest. Normalmente seria um ficheiro separado, mas colocamos os meta-tags no HTML para o Canvas funcionar como um único ficheiro. -->
+    
+    <link rel="icon" href="https://placehold.co/192x192/3b82f6/ffffff?text=RC">
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/3b82f6/ffffff?text=RC">
+    
+    <!-- Incluindo Tailwind CSS para estilos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Estilos personalizados e configuração da fonte */
+        :root {
+            --primary-color: #3b82f6; /* Blue 500 */
+            --success-color: #10b981; /* Emerald 500 */
+            --danger-color: #ef4444; /* Red 500 */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Cor de fundo clara para mobile */
+            color: #1f2937;
+        }
+        .app-container {
+            max-width: 480px; /* Largura típica de telemóvel */
+            min-height: 100vh;
+            background-color: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+        .input-field {
+            border: 1px solid #d1d5db;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.2s;
+            background-color: #f9fafb;
+        }
+        .input-field:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+            outline: none;
+            background-color: white;
+        }
+        .calculate-button {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: 700;
+            transition: background-color 0.2s;
+        }
+        .calculate-button:hover {
+            background-color: #2563eb; /* Blue 600 */
+        }
+        .llm-button {
+            background-color: #7c3aed; /* Violet 600 */
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+            font-size: 14px;
+        }
+        .llm-button:hover {
+            background-color: #6d28d9; /* Violet 700 */
+        }
+        .check-icon {
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+        .check-pass {
+            color: var(--success-color);
+        }
+        .check-fail {
+            color: var(--danger-color);
+        }
+        /* Garantir que o app parece nativo após a instalação */
+        @media all and (display-mode: standalone) {
+            .app-container {
+                min-height: 100%;
+            }
+        }
+    </style>
+</head>
+<body class="flex justify-center p-4 sm:p-6 md:p-8">
+
+    <div class="app-container w-full p-6 rounded-xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Calculadora de Gestão de Risco</h1>
+            <p class="text-gray-500">Determinação do Tamanho da Posição (Contratos/Ações)</p>
+        </header>
+
+        <section id="inputs" class="space-y-4 mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h2 class="text-xl font-semibold mb-3 text-blue-700">Dados Essenciais</h2>
+
+            <!-- 1. Tamanho da Carteira -->
+            <div>
+                <label for="accountBalance" class="block text-sm font-medium text-gray-700 mb-1">Tamanho da Carteira ($) *</label>
+                <input type="number" id="accountBalance" value="10000" min="1" step="any" class="input-field w-full" placeholder="10000.00">
+            </div>
+            
+            <!-- 5. Perda Máxima em Moeda -->
+            <div>
+                <label for="maxLossAmount" class="block text-sm font-medium text-gray-700 mb-1">Valor Máximo de Perda ($) *</label>
+                <input type="number" id="maxLossAmount" value="100" min="0.01" step="any" class="input-field w-full" placeholder="100.00">
+                <p class="text-xs text-gray-500 mt-1">O montante máximo que aceita perder nesta trade.</p>
+            </div>
+
+            <!-- 6. Tamanho do Contrato / Multiplicador -->
+            <div>
+                <div class="flex justify-between items-center mb-1">
+                    <label for="contractSize" class="block text-sm font-medium text-gray-700">Tamanho do Contrato / Multiplicador *</label>
+                    <button onclick="explainContractSize()" class="llm-button flex items-center space-x-1">
+                        <span>O que é?</span>
+                        <span>✨</span>
+                    </button>
+                </div>
+                <input type="number" id="contractSize" value="1" min="0.0001" step="any" class="input-field w-full" placeholder="1.0">
+                <p class="text-xs text-gray-500 mt-1">Ex: 1 para Ações; 10 ou 12.5 para Futuros; 100.000 para Lotes Standard Forex.</p>
+            </div>
+
+            <h2 class="text-xl font-semibold mb-3 text-blue-700 pt-4 border-t border-blue-200">Níveis de Preço</h2>
+            
+            <!-- 2. Posição de Entrada -->
+            <div>
+                <label for="entryPrice" class="block text-sm font-medium text-gray-700 mb-1">Preço de Entrada *</label>
+                <input type="number" id="entryPrice" value="1.0800" min="0" step="any" class="input-field w-full" placeholder="1.0800">
+            </div>
+
+            <!-- 3. Posição Stop Loss -->
+            <div>
+                <label for="stopLossPrice" class="block text-sm font-medium text-gray-700 mb-1">Preço Stop Loss (SL) *</label>
+                <input type="number" id="stopLossPrice" value="1.0750" min="0" step="any" class="input-field w-full" placeholder="1.0750">
+            </div>
+
+            <!-- 4. Posição de Take Profit -->
+            <div>
+                <label for="takeProfitPrice" class="block text-sm font-medium text-gray-700 mb-1">Preço Take Profit (TP) *</label>
+                <input type="number" id="takeProfitPrice" value="1.0950" min="0" step="any" class="input-field w-full" placeholder="1.0950">
+            </div>
+
+            <button onclick="calculateTradeSummary()" class="calculate-button w-full mt-6 flex items-center justify-center space-x-2">
+                <!-- Ícone de calculadora (SVG) -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M12 16h.01"/><path d="M16 16h.01"/><path d="M8 16h.01"/><path d="M12 20h.01"/><path d="M16 20h.01"/><path d="M8 20h.01"/></svg>
+                <span>Calcular Resumo da Trade</span>
+            </button>
+        </section>
+
+        <!-- Seção de Resultados -->
+        <section id="resultsSection" class="p-4 bg-emerald-50 rounded-lg border border-emerald-300">
+            <h2 class="text-xl font-bold mb-4 text-emerald-700">Resultados da Trade</h2>
+            
+            <div id="results" class="space-y-3">
+                
+                <!-- 1. Quantidade a Negociar (O principal) -->
+                <div class="flex justify-between p-3 bg-emerald-200 rounded-lg border-2 border-emerald-500">
+                    <span class="font-bold text-emerald-800">Quantidade a Negociar:</span>
+                    <span id="quantityToTrade" class="font-extrabold text-2xl text-emerald-900">0.00</span>
+                </div>
+
+                <!-- Tamanho da Posição (Nominal) -->
+                <div class="flex justify-between p-2">
+                    <span class="font-medium text-gray-700">Tamanho da Posição (Nominal):</span>
+                    <span id="nominalPositionSize" class="font-bold text-gray-800">$ 0.00</span>
+                </div>
+                
+                <!-- Risco Monetário Real -->
+                <div class="flex justify-between p-2 bg-red-100 rounded-md">
+                    <span class="font-medium text-gray-700">Risco Monetário Real:</span>
+                    <span id="realMonetaryRisk" class="font-bold text-red-600">$ 0.00</span>
+                </div>
+                
+                <!-- Ganho Monetário Possível -->
+                <div class="flex justify-between p-2 bg-emerald-100 rounded-md">
+                    <span class="font-medium text-gray-700">Ganho Monetário Possível:</span>
+                    <span id="potentialGain" class="font-bold text-emerald-600">$ 0.00</span>
+                </div>
+
+                <!-- Quantidade de Entrada Necessária (Unidades da Posição) -->
+                <div class="flex justify-between p-2">
+                    <span class="font-medium text-gray-700">Unidades da Posição:</span>
+                    <span id="entryUnits" class="font-bold text-gray-800">0</span>
+                </div>
+
+                <!-- Racio Risco/Recompensa -->
+                <div class="flex justify-between p-2 pt-4 border-t border-gray-200">
+                    <span class="font-medium text-gray-700">Racio Risco/Recompensa (R:R):</span>
+                    <span id="rrRatio" class="font-bold text-gray-800">0.0 : 1</span>
+                </div>
+                
+                <!-- Risco Monetário (em %) -->
+                <div class="flex justify-between p-2">
+                    <span class="font-medium text-gray-700">% Risco da Carteira:</span>
+                    <span id="riskPercentage" class="font-bold text-red-600">0.00%</span>
+                </div>
+            </div>
+
+            <!-- Verificações de Conformidade -->
+            <div class="mt-6 p-3 border-t border-gray-200 space-y-2">
+                <h3 class="font-bold text-lg text-gray-700 mb-2">Verificação de Conformidade:</h3>
+                
+                <!-- Regra 1: R:R Mínimo -->
+                <div class="flex justify-between items-center bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                    <span class="font-semibold text-gray-800">Objetivo R:R Mínimo (1:3):</span>
+                    <span id="checkRR" class="check-icon check-fail">❌</span>
+                </div>
+
+                <!-- Regra 2: Risco % da Carteira -->
+                <div class="flex justify-between items-center bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                    <span class="font-semibold text-gray-800">Risco na Carteira (< 1.5%):</span>
+                    <span id="checkRisk" class="check-icon check-fail">❌</span>
+                </div>
+
+            </div>
+            
+            <button onclick="analyzeTradeRisk()" class="llm-button w-full mt-6 flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700">
+                <span>Análise de Risco da Trade</span>
+                <span>✨</span>
+            </button>
+
+            <p id="error-message" class="text-red-500 mt-4 font-semibold hidden">⚠️ Erro: Por favor, verifique se todos os campos estão preenchidos com valores positivos e se o SL não é igual ou pior que o preço de entrada (para trades de compra) ou igual ou melhor (para trades de venda).</p>
+        </section>
+
+    </div>
+
+    <!-- Modal Estrutura (Para resultados LLM) -->
+    <div id="llmModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden flex items-center justify-center z-50 p-4" onclick="closeModal()">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-start mb-4">
+                <h3 id="modalTitle" class="text-xl font-bold text-gray-800">Análise de Risco ✨</h3>
+                <button onclick="closeModal()" class="text-gray-500 hover:text-gray-900 transition p-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div id="modalContent" class="text-gray-700 max-h-96 overflow-y-auto space-y-3">
+                <!-- Conteúdo LLM aqui -->
+            </div>
+            <div id="modalLoading" class="text-center mt-4 hidden">
+                <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
+                    <span class="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">A carregar...</span>
+                </div>
+                <p class="text-blue-500 mt-2">A gerar análise...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configurações e Funções Auxiliares
+        const CURRENCY_SYMBOL = "$"; // Símbolo alterado para Dólar
+        const API_KEY = "";
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+        const MAX_RETRIES = 5;
+        const MIN_RR_RATIO = 3.0;
+        const MAX_RISK_PERCENTAGE = 1.5;
+
+        // --- Funções de UI ---
+
+        function showModal(title, content) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalContent').innerHTML = content;
+            document.getElementById('modalLoading').classList.add('hidden');
+            document.getElementById('llmModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('llmModal').classList.add('hidden');
+        }
+
+        function showLoading(title) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalContent').innerHTML = '';
+            document.getElementById('modalLoading').classList.remove('hidden');
+            document.getElementById('llmModal').classList.remove('hidden');
+        }
+
+        /**
+         * Formata um valor monetário.
+         * @param {number} value O valor a ser formatado.
+         * @returns {string} O valor formatado com o símbolo de moeda.
+         */
+        function formatCurrency(value) {
+            if (isNaN(value) || !isFinite(value)) return `${CURRENCY_SYMBOL} 0.00`;
+            const formatted = new Intl.NumberFormat('pt-PT', { 
+                style: 'currency', 
+                currency: 'USD', 
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(Math.abs(value));
+            return formatted;
+        }
+
+        /**
+         * Função para fazer a chamada à API com exponential backoff.
+         */
+        async function fetchWithBackoff(url, options, retries = 0) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                if (retries < MAX_RETRIES) {
+                    const delay = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithBackoff(url, options, retries + 1);
+                } else {
+                    console.error("Erro fatal após várias tentativas:", error);
+                    throw new Error("Não foi possível conectar ao serviço de análise.");
+                }
+            }
+        }
+
+        // --- Funções LLM ---
+
+        /**
+         * Analisa o resumo da trade usando o Gemini LLM.
+         */
+        async function analyzeTradeRisk() {
+            // 1. Obter valores calculados do DOM
+            const rrRatioText = document.getElementById('rrRatio').textContent;
+            const realMonetaryRisk = document.getElementById('realMonetaryRisk').textContent;
+            const riskPercentage = document.getElementById('riskPercentage').textContent;
+            const potentialGain = document.getElementById('potentialGain').textContent;
+            const quantityToTrade = document.getElementById('quantityToTrade').textContent;
+            const entryUnits = document.getElementById('entryUnits').textContent;
+            const nominalPositionSize = document.getElementById('nominalPositionSize').textContent;
+            
+            // Obter inputs crus para contexto adicional (ex: SL/TP difference)
+            const entryPrice = parseFloat(document.getElementById('entryPrice').value);
+            const stopLossPrice = parseFloat(document.getElementById('stopLossPrice').value);
+            const takeProfitPrice = parseFloat(document.getElementById('takeProfitPrice').value);
+            
+            // Calcular diferença de preço
+            const riskPriceDifference = Math.abs(entryPrice - stopLossPrice);
+            const rewardPriceDifference = Math.abs(takeProfitPrice - entryPrice);
+            
+            // Validação mínima antes de chamar a API
+            if (rrRatioText === '0.0 : 1' || isNaN(riskPriceDifference) || riskPriceDifference === 0) {
+                showModal("Análise Inválida", "<p>Por favor, preencha todos os campos da calculadora e clique em 'Calcular Resumo da Trade' antes de pedir a análise.</p>");
+                return;
+            }
+
+            showLoading("A analisar o Risco da Trade...");
+
+            const userQuery = `Analise a seguinte trade com base nos dados calculados:\n
+            - Racio Risco/Recompensa (R:R): ${rrRatioText}
+            - Risco Monetário Real: ${realMonetaryRisk}
+            - Percentagem de Risco na Carteira: ${riskPercentage}
+            - Ganho Monetário Potencial: ${potentialGain}
+            - Tamanho Nominal da Posição: ${nominalPositionSize}
+            - Quantidade de Contratos/Lotes: ${quantityToTrade}
+            - Diferença de preço (Risco em pontos): ${riskPriceDifference.toFixed(4)}
+            - Diferença de preço (Recompensa em pontos): ${rewardPriceDifference.toFixed(4)}`;
+
+            const systemPrompt = "Aja como um analista de risco financeiro experiente. Analise os seguintes dados de trade e forneça um resumo conciso e profissional, avaliando o Risco/Recompensa e a conformidade com as melhores práticas de gestão de risco (Risco < 2% da carteira é excelente). Formate a resposta usando parágrafos e <strong>negrito</strong> para as conclusões. O texto deve ser profissional e em português.";
+            
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            try {
+                const result = await fetchWithBackoff(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível gerar a análise. Tente novamente.";
+                showModal("Análise de Risco da Trade ✨", text);
+
+            } catch (error) {
+                console.error("Erro na chamada LLM:", error);
+                showModal("Erro de Conexão", "<p>Ocorreu um erro ao tentar gerar a análise. Por favor, verifique a sua ligação à internet ou tente mais tarde.</p>");
+            }
+        }
+
+        /**
+         * Explica o conceito de Tamanho do Contrato / Multiplicador.
+         */
+        async function explainContractSize() {
+            showLoading("A gerar explicação...");
+
+            const userQuery = "Explique de forma simples e concisa o que é o 'Tamanho do Contrato' ou 'Multiplicador' no contexto de trading (Forex, Futuros, Ações), e como este valor afeta o cálculo do tamanho da posição.";
+            const systemPrompt = "Aja como um tutor financeiro amigável e experiente. Forneça uma explicação direta e clara em português, usando exemplos curtos para Forex e Ações.";
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            try {
+                const result = await fetchWithBackoff(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível gerar a explicação. Tente novamente.";
+                showModal("O que é 'Tamanho do Contrato'? ✨", text);
+
+            } catch (error) {
+                console.error("Erro na chamada LLM:", error);
+                showModal("Erro de Conexão", "<p>Ocorreu um erro ao tentar gerar a explicação.</p>");
+            }
+        }
+
+        // --- Funções de Cálculo (Atualizadas) ---
+
+        /**
+         * Função principal para calcular o resumo da trade e o tamanho da posição.
+         */
+        function calculateTradeSummary() {
+            // Obter Inputs
+            const accountBalance = parseFloat(document.getElementById('accountBalance').value);
+            const maxLossAmount = parseFloat(document.getElementById('maxLossAmount').value);
+            const contractSize = parseFloat(document.getElementById('contractSize').value);
+            const entryPrice = parseFloat(document.getElementById('entryPrice').value);
+            const stopLossPrice = parseFloat(document.getElementById('stopLossPrice').value);
+            const takeProfitPrice = parseFloat(document.getElementById('takeProfitPrice').value);
+            
+            const errorMessage = document.getElementById('error-message');
+            
+            // Elementos de verificação
+            const checkRR = document.getElementById('checkRR');
+            const checkRisk = document.getElementById('checkRisk');
+
+            // Resetar Verificações (Assumir falha por defeito)
+            checkRR.textContent = '❌';
+            checkRR.classList.remove('check-pass');
+            checkRR.classList.add('check-fail');
+            checkRisk.textContent = '❌';
+            checkRisk.classList.remove('check-pass');
+            checkRisk.classList.add('check-fail');
+
+            // 1. Validação Mínima
+            if (isNaN(accountBalance) || accountBalance <= 0 ||
+                isNaN(maxLossAmount) || maxLossAmount <= 0 ||
+                isNaN(contractSize) || contractSize <= 0 ||
+                isNaN(entryPrice) || isNaN(stopLossPrice) || isNaN(takeProfitPrice) ||
+                entryPrice === stopLossPrice) { 
+                
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            // 2. Determinar o tipo de trade (Compra/Venda) e Validação de Stop Loss
+            let riskPriceDifference = 0;
+            let rewardPriceDifference = 0;
+            
+            if (entryPrice > stopLossPrice) { // Compra (Buy): SL é ABAIXO da Entrada
+                riskPriceDifference = entryPrice - stopLossPrice;
+                rewardPriceDifference = takeProfitPrice - entryPrice;
+            } else if (entryPrice < stopLossPrice) { // Venda (Sell): SL é ACIMA da Entrada
+                riskPriceDifference = stopLossPrice - entryPrice;
+                rewardPriceDifference = entryPrice - takeProfitPrice;
+            }
+            
+            // Validação mais rigorosa
+            if (riskPriceDifference <= 0) {
+                 errorMessage.classList.remove('hidden');
+                 return;
+            }
+
+            // Para o cálculo de R:R, a diferença de preço de recompensa deve ser sempre absoluta
+            rewardPriceDifference = Math.abs(takeProfitPrice - entryPrice);
+            
+            errorMessage.classList.add('hidden');
+            
+            // 3. CÁLCULOS
+
+            // A. Risco Monetário por Unidade de Contrato/Ação
+            const monetaryRiskPerUnit = riskPriceDifference * contractSize;
+
+            // B. Quantidade a Negociar (Position Size)
+            const quantityToTrade = maxLossAmount / monetaryRiskPerUnit;
+            // Arredonda para 2 decimais para melhor compatibilidade com plataformas de trading
+            const finalQuantity = Math.floor(quantityToTrade * 100) / 100; 
+            
+            // C. Risco Monetário Real (Baseado no lote arredondado)
+            const realLossAmount = finalQuantity * monetaryRiskPerUnit;
+            
+            // D. Ganho Monetário Possível
+            const potentialGain = finalQuantity * rewardPriceDifference * contractSize;
+            
+            // E. Racio Risco/Recompensa (Reward / Risk)
+            let rrRatio = rewardPriceDifference / riskPriceDifference;
+
+            // F. % Risco da Carteira 
+            const riskPercentage = (realLossAmount / accountBalance) * 100;
+
+            // G. Tamanho da Posição Nominal (Nominal Position Size)
+            // Assumimos que o tamanho nominal é o valor total da posição aberta (Quantidade * Tamanho do Contrato * Preço de Entrada)
+            const nominalPositionSize = finalQuantity * contractSize * entryPrice; 
+            
+            // 4. APRESENTAR RESULTADOS
+            
+            // Quantidade a negociar
+            document.getElementById('quantityToTrade').textContent = finalQuantity.toFixed(2).toLocaleString('pt-PT');
+
+            // Tamanho da Posição Nominal 
+            document.getElementById('nominalPositionSize').textContent = formatCurrency(nominalPositionSize);
+            
+            // Risco Monetário Real
+            document.getElementById('realMonetaryRisk').textContent = formatCurrency(realLossAmount);
+
+            // Ganho Monetário Possível
+            document.getElementById('potentialGain').textContent = formatCurrency(potentialGain);
+
+            // Unidades da Posição
+            document.getElementById('entryUnits').textContent = Math.round(finalQuantity * contractSize).toLocaleString('pt-PT');
+            
+            // Racio Risco/Recompensa
+            document.getElementById('rrRatio').textContent = `${rrRatio.toFixed(2)} : 1`;
+            
+            // % Risco da Carteira
+            document.getElementById('riskPercentage').textContent = `${riskPercentage.toFixed(2)}%`;
+
+            // 5. ATUALIZAR VERIFICAÇÕES DE CONFORMIDADE
+            
+            // R:R Check (>= 1:3)
+            if (rrRatio >= MIN_RR_RATIO) {
+                checkRR.textContent = '✅';
+                checkRR.classList.remove('check-fail');
+                checkRR.classList.add('check-pass');
+            } else {
+                checkRR.textContent = '❌';
+                checkRR.classList.remove('check-pass');
+                checkRR.classList.add('check-fail');
+            }
+
+            // Risk % Check (< 1.5%)
+            if (riskPercentage < MAX_RISK_PERCENTAGE) {
+                checkRisk.textContent = '✅';
+                checkRisk.classList.remove('check-fail');
+                checkRisk.classList.add('check-pass');
+            } else {
+                checkRisk.textContent = '❌';
+                checkRisk.classList.remove('check-pass');
+                checkRisk.classList.add('check-fail');
+            }
+
+
+            // Ajustar cor do Risco %
+            const riskElement = document.getElementById('riskPercentage');
+            riskElement.classList.remove('text-red-600', 'text-orange-600', 'text-gray-600');
+            if (riskPercentage > 2) {
+                riskElement.classList.add('text-red-600'); // Risco Alto
+            } else if (riskPercentage > 1) {
+                riskElement.classList.add('text-orange-600'); // Risco Médio
+            } else {
+                riskElement.classList.add('text-gray-600'); // Risco Baixo/Controlado
+            }
+        }
+
+        // Executar o cálculo inicial ao carregar a página com os valores padrão
+        window.onload = function() {
+            calculateTradeSummary(); 
+        };
+    </script>
+</body>
+</html>
